@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on Fri May  1 11:40:13 2020
+GMMConv Layer from PyGeometric modified to take eij parameter as implemented in SGRN paper.
+
 
 @author: dm0051
 """
@@ -107,7 +109,7 @@ class GMMConv(MessagePassing):
         glorot(self.root)
         zeros(self.bias)
 
-    def forward(self, x, edge_index, pseudo):
+    def forward(self, x, edge_index, pseudo, eij):
         """
         inject e_ij here, and pass them into message as well.
         """
@@ -118,9 +120,9 @@ class GMMConv(MessagePassing):
 
         if not self.separate_gaussians:
             out = torch.matmul(x, self.g).view(N, K, M)
-            out = self.propagate(edge_index, x=out, pseudo=pseudo)
+            out = self.propagate(edge_index, x=out, pseudo=pseudo, eij=eij)
         else:
-            out = self.propagate(edge_index, x=x, pseudo=pseudo)
+            out = self.propagate(edge_index, x=x, pseudo=pseudo, eij=eij)
 
         if self.root is not None:
             out = out + torch.matmul(x, self.root)
@@ -130,7 +132,7 @@ class GMMConv(MessagePassing):
 
         return out
 
-    def message(self, x_j, pseudo):
+    def message(self, x_j, pseudo, eij):
         """
         x_j (): index_select of x; indices used edge_index[0]. shape (num_edges, K, num_out_channel)  
         pseudo (tensor): Pseudo-coordinates of shape (Num_edges, dim)
@@ -144,7 +146,9 @@ class GMMConv(MessagePassing):
             gaussian = gaussian / (EPS + self.sigma.view(1, K, D).pow(2))
             gaussian = torch.exp(gaussian.sum(dim=-1))  # [E, K]
 
-            return (x_j.view(E, K, M) * gaussian.view(E, K, 1)).sum(dim=-2)  # [E,M] 
+            #return (x_j.view(E, K, M) * gaussian.view(E, K, 1)).sum(dim=-2)  # [E,M] 
+            return (x_j.view(E, K, M) * gaussian.view(E, K, 1) * eij.view(E,1,1)).sum(dim=-2)  # [E,M]
+            
 
         else:
             gaussian = -0.5 * (pseudo.view(E, 1, 1, 1, D) -
